@@ -1,6 +1,6 @@
 # vRPC
 
-vrpc is a rpc based on lemon-mint's [vstruct](https://github.com/snowmerak/lemon-mint/vstruct).
+vrpc is a rpc based on lemon-mint's [vstruct](https://github.com/lemon-mint/vstruct).
 
 ## install
 
