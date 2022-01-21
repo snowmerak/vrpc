@@ -2,6 +2,12 @@
 
 vrpc is a rpc based on lemin-mint's [vstruct](https://github.com/snowmerak/lemon-mint/vstruct).
 
+## install
+
+```bash
+go get github.com/snowmerak/vrpc
+```
+
 ## Frame
 
 vrpc has a frame for communication.
