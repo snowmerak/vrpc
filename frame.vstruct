@@ -1,0 +1,7 @@
+struct Frame {
+    uint32 Service;
+    uint32 Method;
+    uint32 Sequence;
+    uint32 BodySize;
+    bytes Body;
+}
