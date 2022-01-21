@@ -44,7 +44,7 @@ func (s *Server) Register(service uint32, method uint32, f interface{}) error {
 			return fmt.Errorf("%d %d: %s is not convertible to []byte", service, method, request.In)
 		}
 		if i > 0 {
-			return fmt.Errorf("%d %d: paramters too many", service, method)
+			return fmt.Errorf("%d %d: there must be one parameter", service, method)
 		}
 	}
 	for i := 0; i < fnType.NumOut(); i++ {
@@ -53,7 +53,7 @@ func (s *Server) Register(service uint32, method uint32, f interface{}) error {
 			return fmt.Errorf("%d %d: %s is not convertible to []byte", service, method, request.Out)
 		}
 		if i > 0 {
-			return fmt.Errorf("%d %d: paramters too many", service, method)
+			return fmt.Errorf("%d %d: there must be one return", service, method)
 		}
 	}
 	request.fn = reflect.ValueOf(f)
