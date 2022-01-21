@@ -171,4 +171,5 @@ func (s *Server) Shutdown() {
 	for conn := range s.conns {
 		conn.Close()
 	}
+	s.logger.Printf("Server shutdown\n")
 }
