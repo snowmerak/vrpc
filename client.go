@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"log"
+	"math/rand"
 	"net"
 	"sync"
 
@@ -11,7 +12,7 @@ import (
 )
 
 type Client struct {
-	sync.Mutex
+	lock   sync.Mutex
 	logger *log.Logger
 	buf    *bytes.Buffer
 	conn   net.Conn
@@ -34,12 +35,14 @@ func NewClient(addr string, logger *log.Logger) (*Client, error) {
 }
 
 func (c *Client) Request(service uint32, method uint32, data []byte) ([]byte, error) {
-	c.Lock()
-	defer c.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.conn == nil {
 		return nil, errors.New("client is not connected")
 	}
-	data = frame.New_Frame(service, method, 0, uint32(len(data)), data)
+	size := uint32(len(data))
+	seq := rand.Uint32()
+	data = frame.New_Frame(service, method, seq, size+8, data)
 	n, err := c.conn.Write(data)
 	if err != nil {
 		c.logger.Printf("%s: write error: %s\n", c.conn.RemoteAddr(), err)
@@ -49,7 +52,6 @@ func (c *Client) Request(service uint32, method uint32, data []byte) ([]byte, er
 		c.logger.Printf("%s: write error: %s\n", c.conn.RemoteAddr(), "short write")
 		return nil, errors.New("failed to write all data")
 	}
-	buf := [1024]byte{}
 	header := [16]byte{}
 	n, err = c.conn.Read(header[:])
 	if err != nil {
@@ -62,7 +64,9 @@ func (c *Client) Request(service uint32, method uint32, data []byte) ([]byte, er
 	}
 	bodySize := uint64(frame.Frame(header[:]).BodySize())
 	curSize := uint64(0)
+	buf := [1024]byte{}
 	c.buf.Reset()
+	c.buf.Write(header[:])
 	for {
 		n, err := c.conn.Read(buf[:])
 		if err != nil {
@@ -72,15 +76,28 @@ func (c *Client) Request(service uint32, method uint32, data []byte) ([]byte, er
 		c.buf.Write(buf[:n])
 		curSize += uint64(n)
 		if curSize >= bodySize {
+			if curSize > bodySize {
+				c.logger.Printf("%s: body size mismatched %d > %d\n", c.conn.RemoteAddr(), curSize, bodySize)
+				return nil, errors.New("body size is larger than expected")
+			}
+			data := frame.Frame(c.buf.Bytes())
+			if !data.Vstruct_Validate() {
+				c.logger.Printf("%s: invalid frame arrived\n", c.conn.RemoteAddr())
+				return nil, errors.New("invalid frame arrived")
+			}
+			if data.Sequence() != seq+1 {
+				c.logger.Printf("%s: sequence mismatched %d != %d\n", c.conn.RemoteAddr(), data.Sequence(), seq+1)
+				return nil, errors.New("sequence mismatched")
+			}
 			c.logger.Printf("%s: read %d bytes\n", c.conn.RemoteAddr(), curSize)
-			return c.buf.Bytes(), nil
+			return data.Body(), nil
 		}
 	}
 }
 
 func (c *Client) Close() {
-	c.Lock()
-	defer c.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.conn != nil {
 		c.conn.Close()
 		c.logger.Printf("%s: disconnected\n", c.conn.RemoteAddr())
@@ -89,8 +106,8 @@ func (c *Client) Close() {
 }
 
 func (c *Client) Reconnect() error {
-	c.Lock()
-	defer c.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
