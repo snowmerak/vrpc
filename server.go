@@ -2,31 +2,63 @@ package vrpc
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"net"
+	"reflect"
 
 	"github.com/snowmerak/vrpc/frame"
 )
 
+var bytesType = reflect.TypeOf([]byte{})
+
 type Server struct {
 	logger  *log.Logger
 	conns   map[net.Conn]bool
-	methods map[uint32]map[uint32]func([]byte) []byte
+	methods map[uint32]map[uint32]*Request
+}
+
+type Request struct {
+	In  reflect.Type
+	Out reflect.Type
+	fn  reflect.Value
 }
 
 func NewServer(logger *log.Logger) *Server {
 	return &Server{
 		logger:  logger,
 		conns:   make(map[net.Conn]bool),
-		methods: make(map[uint32]map[uint32]func([]byte) []byte),
+		methods: make(map[uint32]map[uint32]*Request),
 	}
 }
 
-func (s *Server) Register(service uint32, method uint32, f func([]byte) []byte) {
+func (s *Server) Register(service uint32, method uint32, f interface{}) error {
 	if _, ok := s.methods[service]; !ok {
-		s.methods[service] = make(map[uint32]func([]byte) []byte)
+		s.methods[service] = make(map[uint32]*Request)
 	}
-	s.methods[service][method] = f
+	request := new(Request)
+	fnType := reflect.TypeOf(f)
+	for i := 0; i < fnType.NumIn(); i++ {
+		request.In = fnType.In(i)
+		if !request.In.ConvertibleTo(bytesType) {
+			return fmt.Errorf("%d %d: %s is not convertible to []byte", service, method, request.In)
+		}
+		if i > 0 {
+			return fmt.Errorf("%d %d: paramters too many", service, method)
+		}
+	}
+	for i := 0; i < fnType.NumOut(); i++ {
+		request.Out = fnType.Out(i)
+		if !request.Out.ConvertibleTo(bytesType) {
+			return fmt.Errorf("%d %d: %s is not convertible to []byte", service, method, request.Out)
+		}
+		if i > 0 {
+			return fmt.Errorf("%d %d: paramters too many", service, method)
+		}
+	}
+	request.fn = reflect.ValueOf(f)
+	s.methods[service][method] = request
+	return nil
 }
 
 func (s *Server) Unregister(service uint32, method uint32) {
@@ -87,7 +119,20 @@ func (s *Server) handler(conn net.Conn) {
 				s.logger.Printf("%s: Invalid vstruct frame\n", conn.RemoteAddr())
 				return
 			}
-			replyBody := s.methods[frm.Service()][frm.Method()](frm.Body())
+			request := s.methods[frm.Service()][frm.Method()]
+			if request == nil {
+				s.logger.Printf("%s: Unknown service %d method %d\n", conn.RemoteAddr(), frm.Service(), frm.Method())
+				return
+			}
+			in := reflect.New(request.In).Elem()
+			in.Set(reflect.ValueOf(frm.Body()))
+			if !in.MethodByName("Vstruct_Validate").Call(nil)[0].Bool() {
+				s.logger.Printf("%s: Invalid vstruct data\n", conn.RemoteAddr())
+				return
+			}
+			out := reflect.New(request.Out).Elem()
+			out.Set(request.fn.Call([]reflect.Value{in})[0])
+			replyBody := request.fn.Call([]reflect.Value{reflect.ValueOf(frm.Body())})[0].Bytes()
 			result := frame.New_Frame(frm.Service(), frm.Method(), frm.Sequence()+1, uint32(len(replyBody)+8), replyBody)
 			n, err := conn.Write(result)
 			if err != nil {
