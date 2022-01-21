@@ -1,6 +1,6 @@
 # vRPC
 
-vrpc is a rpc based on lemin-mint's [vstruct](https://github.com/snowmerak/lemon-mint/vstruct).
+vrpc is a rpc based on lemon-mint's [vstruct](https://github.com/snowmerak/lemon-mint/vstruct).
 
 ## install
 
@@ -69,7 +69,7 @@ Second parameter is `Method` number.
 You must write function with one vstruct parameter and one vstruct return.  
 Function's body is free for you.
 
-vrpc offer `vrpc.EmptyValue` for empty parameter.  
+vrpc offers `vrpc.EmptyValue` for empty parameter.  
 can not use `nil`.
 
 ### serve
